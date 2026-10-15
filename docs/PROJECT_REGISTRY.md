@@ -122,3 +122,11 @@ A resolved incident requires a root cause and resolution description.
 - Focused incident and audit tests: reported passed.
 - Full test suite: awaiting recorded final test summary.
 - Database migrations: implemented; migration verification should be repeated as part of deployment validation.
+
+Record the following under Stage 9:
+- Rule-based remediation planning.
+- Persistent remediation attempts and approval status.
+- Approval and rejection endpoints with role checks.
+- Remediation history endpoint, if its tests have passed.
+- Validation that rejects invalid plans and requires approval for non-low-risk plans.
+- Explicit limitation: remediation actions are not executed.

@@ -13,6 +13,9 @@ from app.core.config import settings
 from app.core.logging_config import configure_logging
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.metrics import router as metrics_router
+
+from app.api.routes.remediation import router as remediation_router
 
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
@@ -87,7 +90,7 @@ async def request_tracking_middleware(request: Request, call_next):
 
     return response
 
-
+app.include_router(metrics_router, prefix=settings.api_v1_prefix)
 app.include_router(health_router)
 app.include_router(
     incidents_router,
@@ -97,7 +100,10 @@ app.include_router(
     auth_router,
     prefix=settings.api_v1_prefix,
 )
-
+app.include_router(
+    remediation_router,
+    prefix=settings.api_v1_prefix,
+)
 
 @app.get("/", tags=["Root"], summary="Application information")
 async def root() -> dict[str, str]:

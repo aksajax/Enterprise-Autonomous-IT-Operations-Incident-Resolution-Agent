@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -10,7 +11,8 @@ from sqlalchemy import (
     String,
     Text,
     Boolean,
-    UniqueConstraint
+    UniqueConstraint,
+    func
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -126,6 +128,64 @@ class Incident(Base):
         back_populates="incident",
         cascade="all, delete-orphan",
         order_by="IncidentEvent.id",
+    )
+
+
+class RemediationAttempt(Base):
+    __tablename__ = "remediation_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    incident_id: Mapped[int] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    rule_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    action: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    risk_level: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="planned",
+        index=True,
+    )
+
+    approved_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    execution_result: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
