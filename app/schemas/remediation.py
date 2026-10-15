@@ -18,7 +18,7 @@ class RemediationPlanResponse(BaseModel):
     risk_level: str
     requires_approval: bool
     status: str
-    approved_by: int | None
+    approved_by: str | None
     approved_at: datetime | None
     execution_result: str | None
     created_at: datetime

@@ -136,11 +136,12 @@ class RemediationAttempt(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
-    incident_id: Mapped[int] = mapped_column(
-        ForeignKey("incidents.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    incident_id: Mapped[str] = mapped_column(
+    String(36),
+    ForeignKey("incidents.id", ondelete="CASCADE"),
+    nullable=False,
+    index=True,
+)
 
     rule_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     action: Mapped[str] = mapped_column(String(150), nullable=False)
@@ -160,10 +161,11 @@ class RemediationAttempt(Base):
         index=True,
     )
 
-    approved_by: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"),
-        nullable=True,
-    )
+    approved_by: Mapped[str | None] = mapped_column(
+    String(36),
+    ForeignKey("users.id"),
+    nullable=True,
+)
 
     approved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -172,6 +174,16 @@ class RemediationAttempt(Base):
 
     execution_result: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+    
+    execution_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    execution_finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 

@@ -1,3 +1,4 @@
+
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -7,15 +8,15 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
+from app.api.routes.auth import router as auth_router
 from app.api.routes.health import router as health_router
 from app.api.routes.incidents import router as incidents_router
+from app.api.routes.metrics import router as metrics_router
+from app.api.routes.remediation import router as remediation_router
 from app.core.config import settings
 from app.core.logging_config import configure_logging
-
-from app.api.routes.auth import router as auth_router
-from app.api.routes.metrics import router as metrics_router
-
-from app.api.routes.remediation import router as remediation_router
+from app.db.session import SessionLocal
+from app.services.remediation_recovery import recover_stuck_executions
 
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
@@ -27,7 +28,26 @@ async def lifespan(_: FastAPI):
         "application_starting",
         extra={"environment": settings.app_env},
     )
+
+    # Recover stale remediation executions during startup.
+    try:
+        with SessionLocal() as db:
+            recovered_count = recover_stuck_executions(
+                db,
+                timeout_minutes=15,
+            )
+
+        logger.info(
+            "remediation_recovery_completed",
+            extra={"recovered_count": recovered_count},
+        )
+    except Exception:
+        # Recovery failures must be visible, but should not prevent
+        # the API from starting.
+        logger.exception("remediation_recovery_failed")
+
     yield
+
     logger.info("application_stopping")
 
 
@@ -90,6 +110,7 @@ async def request_tracking_middleware(request: Request, call_next):
 
     return response
 
+
 app.include_router(metrics_router, prefix=settings.api_v1_prefix)
 app.include_router(health_router)
 app.include_router(
@@ -104,6 +125,7 @@ app.include_router(
     remediation_router,
     prefix=settings.api_v1_prefix,
 )
+
 
 @app.get("/", tags=["Root"], summary="Application information")
 async def root() -> dict[str, str]:
