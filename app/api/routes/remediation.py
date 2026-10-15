@@ -1,13 +1,31 @@
 
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from app.db.models import RemediationAttempt
+from app.core.dependencies import get_current_user
+from app.db.models import (
+    Incident,
+    RemediationAttempt,
+    User,
+)
+from app.db.session import get_db
 from app.schemas.remediation import (
+    RemediationHistoryResponse,
     RemediationPlanResponse,
     RemediationRejectionRequest,
 )
+from app.services.audit_service import record_audit_event
+from app.services.remediation_record_service import (
+    create_remediation_attempt,
+)
+from app.services.remediation_service import (
+    generate_remediation_plan,
+)
+
+router = APIRouter(prefix="/remediations", tags=["Remediations"])
 
 
 def _require_remediation_operator(user: User) -> None:
@@ -46,14 +64,63 @@ def _get_pending_attempt(
 
 
 @router.post(
+    "/incidents/{incident_id}/plan",
+    response_model=RemediationPlanResponse,
+    summary="Create a remediation plan",
+)
+def create_remediation_plan_endpoint(
+    incident_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RemediationPlanResponse:
+    try:
+        incident = db.get(Incident, incident_id)
+
+        if incident is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Incident not found",
+            )
+
+        plan = generate_remediation_plan(incident)
+        attempt = create_remediation_attempt(db, plan)
+
+        record_audit_event(
+            db=db,
+            user_id=current_user.id,
+            action="remediation_plan_created",
+            resource_type="remediation_attempt",
+            resource_id=str(attempt.id),
+            details={
+                "incident_id": incident_id,
+                "action": attempt.action,
+                "risk_level": attempt.risk_level,
+                "requires_approval": attempt.requires_approval,
+            },
+        )
+
+        db.commit()
+        db.refresh(attempt)
+
+        return RemediationPlanResponse.model_validate(attempt)
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post(
     "/{attempt_id}/approve",
     response_model=RemediationPlanResponse,
     summary="Approve a remediation plan",
 )
 def approve_remediation_endpoint(
     attempt_id: int,
-    db: DatabaseSession,
-    current_user: AuthenticatedUser,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> RemediationPlanResponse:
     _require_remediation_operator(current_user)
 
@@ -97,8 +164,8 @@ def approve_remediation_endpoint(
 def reject_remediation_endpoint(
     attempt_id: int,
     payload: RemediationRejectionRequest,
-    db: DatabaseSession,
-    current_user: AuthenticatedUser,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> RemediationPlanResponse:
     _require_remediation_operator(current_user)
 
@@ -132,3 +199,41 @@ def reject_remediation_endpoint(
     except Exception:
         db.rollback()
         raise
+
+
+@router.get(
+    "/incidents/{incident_id}/history",
+    response_model=RemediationHistoryResponse,
+    summary="Get remediation history for an incident",
+)
+def get_remediation_history_endpoint(
+    incident_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RemediationHistoryResponse:
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+
+    statement = (
+        select(RemediationAttempt)
+        .where(RemediationAttempt.incident_id == incident_id)
+        .order_by(
+            RemediationAttempt.created_at.desc(),
+            RemediationAttempt.id.desc(),
+        )
+    )
+
+    attempts = list(db.scalars(statement).all())
+
+    return RemediationHistoryResponse(
+        items=[
+            RemediationPlanResponse.model_validate(attempt)
+            for attempt in attempts
+        ],
+        total=len(attempts),
+    )
